@@ -1,0 +1,196 @@
+#Final Project
+##By Yang Dai
+
+###Preparation
+```{r,eval=F}
+library(readxl)
+library('tidyverse')
+library('DescTools')
+library(moments)
+library(scales)
+library(gmodels)
+```
+
+###Get the data
+```{r,eval=F}
+accidents<-read.csv('https://github.com/daiyang94815/data/raw/master/dftRoadSafety_Accidents_2016.csv')
+casualty<-read.csv('https://github.com/daiyang94815/data/raw/master/Cas.csv')
+vehicle<-read.csv('https://github.com/daiyang94815/data/raw/master/Veh.csv')
+```
+
+###Explore the distribution of where accidents took place (rural/urban) (dichotomous data)
+```{r}
+#distribution of its values:
+table(accidents$Urban_or_Rural_Area)
+```
+
+```{r,eval=F}
+#relative frequencies:
+prop.table(table(accidents$Urban_or_Rural_Area))
+
+#test to see if the differences are significant:
+distribution=table(accidents$Urban_or_Rural_Area)
+chisq.test(distribution)
+```
+
+The above results included the accidents that were "unallocated" to either urban or rural area. So I get rid of them and re-test:
+```{r}
+accidents[accidents$Urban_or_Rural_Area==3,]$Urban_or_Rural_Area=NA
+```
+
+```{r,eval=F,echo=F}
+#symbolsForNA=c(3) # you can put here the symbols you want to convert to NA
+#accidents[,'Urban_or_Rural_Area']=lapply(accidents[,'Urban_or_Rural_Area'],
+                 #function(x) 
+                   #replace(x,x%in%symbolsForNA, NA))
+```
+
+RE-testing
+```{r,eval=F}
+#clean frequency table:
+table(accidents$Urban_or_Rural_Area)
+#RE-testing
+distribution=table(accidents$Urban_or_Rural_Area)
+chisq.test(distribution)
+```
+The equal distribution of frequencies is rejected again.
+No doubt that there are much more accidents took place in urban areas.
+
+####Central measurement and dispersion
+```{r,eval=F}
+# getting the highest count:
+modeCount=max(distribution)
+# matching with the count
+mode=distribution[distribution==modeCount]
+# result
+names(mode)
+```
+
+#####Make a function for getting mode
+```{r,eval=F}
+getMode=function(aColumn){
+  freqTable=table(aColumn)
+  maxFrequency=max(freqTable)
+  names(freqTable[freqTable==maxFrequency])
+}
+```
+
+###Explore the distribution of accident severity (ordinal categorical variable)
+```{r,eval=F}
+# getting original levels:
+levelCat=names(table(accidents$Accident_Severity))
+
+# reordering original levels:
+levelCat=c(rev(levelCat))
+
+# format this into an ordinal variable:
+accidents$Accident_Severity=factor(accidents$Accident_Severity,
+                             levels = levelCat,
+                             labels=c('Slight','Serious','Fatal'),ordered=T)
+table(accidents$Accident_Severity)
+```
+
+####Central Value
+```{r,eval=F}
+#get the mode
+getMode(accidents$Accident_Severity)
+#get the median
+Median(accidents$Accident_Severity,na.rm = T)
+median(as.numeric(accidents$Accident_Severity),na.rm = T)
+cumsum(prop.table(table(accidents$Accident_Severity)))  
+```
+
+####Dispersion
+```{r,eval=F}
+Gini(table(accidents$Accident_Severity))
+```
+Gini tells that there is some concentration. The plot should help us get a better idea:
+```{r,eval=F}
+accidents[!is.na(accidents$Accident_Severity),]%>%
+  ggplot(aes(Accident_Severity))+geom_bar()
+```
+
+###Explore number of vehicles involved in accidents (counts)
+####Centrality
+```{r,eval=F}
+summary(accidents$Number_of_Vehicles)
+```
+
+####Skewness
+```{r,eval=F}
+skewness(accidents$Number_of_Vehicles,na.rm=T)#what does this mean?
+```
+
+####Kurtosis
+```{r,eval=F}
+kurtosis(accidents$Number_of_Vehicles,na.rm=T)
+```
+
+```{r,eval=F}
+accidents%>%
+  ggplot(aes(Number_of_Vehicles))+geom_histogram(bins = 50)+
+  theme(axis.text.x = element_text(angle = 60,hjust = 1,size = 5))+
+  scale_x_continuous(labels = comma)
+```
+
+###Explore the relationship between Road Surface Conditions and Accident Severity (Categorical - Categorical)
+
+
+```{r,eval=F}
+table(accidents$Road_Surface_Conditions)
+accidents$Road_Surface_Conditions=factor(as.factor(accidents$Road_Surface_Conditions),
+                                         levels=names(table(accidents$Road_Surface_Conditions)),
+                             labels=c('Data missing or out of range','Dry','Wet or damp','Snow',
+                                      'Frost or ice','Flood over 3cm. deep'))#not working?
+```
+
+
+contingency table (crosstab):
+```{r,eval=F}
+table(accidents$Road_Surface_Conditions,accidents$Accident_Severity)
+CrossTable(accidents$Road_Surface_Conditions,accidents$Accident_Severity,prop.t=F, prop.r=F, prop.c=F,prop.chisq=F)
+```
+
+ignore data that is missing or out of range in Road_Surface_Conditions:
+```{r,eval=F}
+accidents_copy=accidents
+levels(accidents_copy$Road_Surface_Conditions)[1]=NA
+CrossTable(accidents_copy$Road_Surface_Conditions,accidents_copy$Accident_Severity,prop.t=T, prop.r=F, prop.c=F,prop.chisq=F)
+```
+
+compute percents (relative values) marginally:
+```{r,eval=F}
+# severity by road surface condition:
+CrossTable(accidents_copy$Road_Surface_Conditions,accidents_copy$Accident_Severity,prop.t=F, prop.r=T, prop.c=F,prop.chisq=F)
+# road surface condition by severity:
+CrossTable(accidents_copy$Road_Surface_Conditions,accidents_copy$Accident_Severity,prop.t=F, prop.r=F, prop.c=T,prop.chisq=F)
+```
+
+test the Ho that the variables are independent (not associated):
+```{r,eval=F}
+CrossTable(accidents_copy$Road_Surface_Conditions,accidents_copy$Accident_Severity,prop.t=F, prop.r=F, prop.c=F,prop.chisq=F,chisq=T)
+```
+
+visual representation:
+```{r,eval=F}
+legendPlot=levels(as.factor(unique(accidents_copy$Road_Surface_Conditions)))
+bartable = table(accidents_copy$Road_Surface_Conditions,accidents_copy$Accident_Severity)  ## get the cross tab
+barplot(bartable, beside = TRUE,legend=legendPlot)  ## plot
+```
+
+represent the cross table in a nicer way:
+```{r,eval=F}
+#turn table into a data frame:
+accidents_copyTb=as.data.frame(table(accidents_copy$Road_Surface_Conditions,accidents_copy$Accident_Severity))
+names(accidents_copyTb)=c('Road_Surface_Conditions','Accident_Severity','freq')
+
+#Plot the Data
+accidents_copyTb%>%
+  ggplot(aes(Road_Surface_Conditions, Accident_Severity)) + theme_bw()+ #white background
+  geom_point(aes(size = freq), colour = "green")+ #green dot sized by frequency
+  geom_text(aes(label = freq))+ # frequency value as label
+  theme(legend.position="none")+ # no legend
+  scale_size_continuous(range=c(5,30))+ # limits of point size
+  labs(title="You see association?") # with titles!
+```
+
