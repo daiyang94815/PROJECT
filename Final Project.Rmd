@@ -28,6 +28,15 @@ I got the UK shapefiles from [here](http://geoportal.statistics.gov.uk/datasets/
 #accidents<-read.csv('https://github.com/daiyang94815/Project/raw/master/data/dftRoadSafety_Accidents_2016.csv')
 #casualty<-read.csv('https://github.com/daiyang94815/Project/raw/master/data/Cas.csv')
 #vehicle<-read.csv('https://github.com/daiyang94815/Project/raw/master/data/Veh.csv')
+#temp = tempfile(fileext = ".xlsx") # use always with Excel
+#dataURL <- "https://github.com/daiyang94815/Project/raw/master/data/Road%20Accident%20Safety%20Data%20Guide.xls" # link to data
+#download.file(dataURL, destfile=temp, mode='wb')  # file will be downloaded temporarily
+#guide_lad = read_excel(temp, sheet =6)
+#temp = tempfile(fileext = ".xlsx") # use always with Excel
+#dataURL <- "https://github.com/daiyang94815/Project/raw/master/data/ukmidyearpopest2016.xls" # link to data
+#download.file(dataURL, destfile=temp, mode='wb')  # file will be downloaded temporarily
+#pop = read_excel(temp, sheet =5,skip=4)
+
 accidents<-read.csv('dftRoadSafety_Accidents_2016.csv',stringsAsFactors = F)
 casualty<-read.csv('Cas.csv',stringsAsFactors = F)
 vehicle<-read.csv('Veh.csv',stringsAsFactors = F)
@@ -39,8 +48,9 @@ Duplicate the dataset for different uses:
 ```{r}
 accidents_EDA=accidents
 accidents_map=accidents
+accidents_reg=accidents
+vehicle_reg=vehicle
 ```
-
 
 The data has these columns:
 ```{r}
@@ -174,16 +184,12 @@ accidents_EDA%>%
 We can see most accidents_EDA involved 2 vehicles.
 
 ###Explore the relationship between Road Surface Conditions and Accident Severity (Categorical - Categorical)
-
-
 ```{r,eval=F}
 table(accidents_EDA$Road_Surface_Conditions)
 accidents_EDA$Road_Surface_Conditions=factor(as.factor(accidents_EDA$Road_Surface_Conditions),
                              labels=c('Data missing or out of range','Dry','Wet or damp','Snow',
                                       'Frost or ice','Flood over 3cm. deep'))
 ```
-
-
 contingency table (crosstab):
 ```{r,eval=F}
 table(accidents_EDA$Road_Surface_Conditions,accidents_EDA$Accident_Severity)
@@ -232,6 +238,129 @@ accidents_EDA_Tb%>%
   labs(title="You see association?") # with titles!
 ```
 
+###What attributes may increase the chance that an accident is serious (rather than slight)? (Logistic Regression)
+I only want to know how the attributes affect the probability increase from slight to serious, so I need to drop those fatal incidents, and label 3 as Slight, 2 as Serious:
+```{r}
+accidents_reg=accidents[accidents$Accident_Severity!=1,]
+```
+
+```{r}
+x=1
+for (x in 1:length(accidents_reg$Accident_Severity)) {
+  if(accidents_reg[x,'Accident_Severity']==3)accidents_reg[x,'Accident_Severity']=1
+}
+```
+```{r}
+accidents_reg$Accident_Severity=accidents_reg$Accident_Severity-2
+accidents_reg$Accident_Severity=as.factor(accidents_reg$Accident_Severity)
+```
+
+
+```{r}
+#accidents_reg[,'Accident_Severity']=as.data.frame(lapply(accidents_reg[,'Accident_Severity'],                        function(x)ifelse(x==3,1,x)))
+```
+
+```{r}
+barplot(table(accidents_reg$Accident_Severity))
+```
+The linear regression model computed the coefficients of X so that we predict the value of Y, being those continuous variables. In logistic regression, we have only two values, 'Slight' and 'Serious' in Y. Then, the model will instead help you see which of the X variables will increase the 'odds' of getting a 'Serious'.
+
+Some data cleaning and formatting before regression:
+```{r}
+vehicle_reg=dplyr::select(vehicle,Accident_Index,Sex_of_Driver,Age_of_Driver,Age_of_Vehicle)
+vehicle_reg=vehicle_reg[vehicle_reg$Sex_of_Driver%in%c(1,2)&vehicle_reg$Age_of_Driver!=-1&vehicle_reg$Age_of_Vehicle!=-1,] #include only Male and Female and valid age
+vehicle_reg$Sex_of_Driver=vehicle_reg$Sex_of_Driver-1 #recode Male as 0, Female as 1
+```
+
+```{r}
+accidents_sex=aggregate(list(Avg_Sex_of_Driver=vehicle_reg$Sex_of_Driver),list(Accident_Index=vehicle_reg$Accident_Index),mean)
+accidents_driverAge=aggregate(list(Avg_Age_of_Driver=vehicle_reg$Age_of_Driver),list(Accident_Index=vehicle_reg$Accident_Index),mean)
+accidents_vehicleAge=aggregate(list(Avg_Age_of_Vehicle=vehicle_reg$Age_of_Vehicle),list(Accident_Index=vehicle_reg$Accident_Index),mean)
+```
+
+```{r}
+accidents_reg=merge(accidents_reg,accidents_sex)
+merge=merge(accidents_driverAge,accidents_vehicleAge)
+accidents_reg=merge(accidents_reg,merge)
+accidents_reg=dplyr::select(accidents_reg,Accident_Index,Accident_Severity,Avg_Sex_of_Driver,Avg_Age_of_Driver,Avg_Age_of_Vehicle)
+```
+
+The way to request this model is very similar to linear regression:
+```{r}
+# function 'glm' !
+LogitSev_a =glm(Accident_Severity ~ Avg_Sex_of_Driver + Avg_Age_of_Driver + Avg_Age_of_Vehicle, 
+                   data = accidents_reg,
+                   family = binomial())
+
+# see full results: summary(LogitSev_a)
+
+# see relevant info on coefficients:
+results_a=coef(summary(LogitSev_a))
+data.frame(CoefficientExp=exp(results_a[,1]),Significant=results_a[,4]<0.05)
+```
+
+Instead of the Adjusted RSquared, the GLM function offers the Akaike Information Criterion (AIC) as a relative measure of fitness. If you had two models, the smaller the AIC signals the best one of the two compared. Let's make another model:
+```{r}
+# remember that presscat is factor
+LogitSev_b=glm(Accident_Severity ~ Avg_Sex_of_Driver,data = accidents_reg,
+                   family = binomial())
+results_b=coef(summary(LogitSev_b))
+data.frame(CoefficientExp=exp(results_b[,1]),Significant=results_b[,4]<0.05)
+```
+Now use the AIC:
+```{r}
+if (LogitSev_a$aic < LogitSev_b$aic){
+    print("model 'a' is better")
+}else{print("model 'b' is better")}
+```
+-How much is each variable in X influencing Y?
+As you see above, I have exponentiated the resulting coefficients from the model. That is the first step to give an adequate interpretation. From there, you know there is a direct effect (increases the odds of Y=1) if the coefficient is greater than one, and and inverse effect if less than one, while its closeness to 1 would mean no effect. As before, we should be confident of a coefficient value if this were significant.
+Keep in mind that if the coefficient is categorical, the increase or decrease of the odds depends on what level of the category is the reference. In the case above, presscatLow decreases the odds respect to presscatHigh.
+-Do I have a good logistic model?
+Logistics regression can have similar problems that need to be evaluated as in the case of linear regression. However, the critical way to compare the output is the **confusion matrix**.
+The confusion matrix requires two inputs, the actual values and the values predicted by the model:
+```{r}
+actualValues=accidents_reg$Accident_Severity
+predictedValues=as.numeric(predict(LogitSev_a, type = 'response'))
+```
+Using the values above:
+```{r}
+library(InformationValue)
+
+cm=confusionMatrix(actualValues, predictedValues)
+row.names(cm)=c('PredictedNegative','PredictedPositive')
+colnames(cm)=c('ActualNegative','ActualPositive')
+cm
+```
+From the table above, we know that the model predicted well 47 zeros and 51 ones, thats is 98 matches out of 129. So, we got 31 out out 129 mistakes, which is interpreted as the misclassification error rate:
+```{r}
+misClassError(actualValues, predictedValues)
+```
+Another key concept in evaluating this model is the ROC curve:
+```{r}
+plotROC(actualValues, predictedValues)
+```
+The better the model did, the more this curve will expand towards the left top corner. You can also see the value of the area under the curve (AUROC). The most the AUROC can be be is 1. The model is worthless if AUROC is 0.5, when the border of the curve is close to the diagonal (from bottom left to top rigth).
+Notice the labels sensitivity and specificity. These are important concepts that can be used in the logistic regression context. They are build upon the following concepts:
+```{r}
+TruePositive=cm['PredictedPositive','ActualPositive']
+TrueNegative=cm['PredictedNegative','ActualNegative']
+FalsePositive=cm['PredictedPositive','ActualNegative']
+FalseNegative=cm['PredictedNegative','ActualPositive']
+```
+Sensitivity is the true positive rate (TPR), that is, the probability of a positive prediction given that the case was positive.
+```{r}
+# TruePositive/(TruePositive+FalseNegative)
+sensitivity(actualValues, predictedValues)
+```
+Specificity is the true negative rate (TNR), that is, the probability of a negative prediction given that the case was negative.
+```{r}
+# TrueNegative/(FalsePositive+TrueNegative)
+specificity(actualValues, predictedValues)
+```
+The interpretation of these values needs to be contextualized according to the decision-making situation.
+
+###Mapping Accident Severity
 Because they coded 1 as Fatal, 3 as Slight, I want them to be reversed to reflect common sense (higher score means more dangerous).
 ```{r}
 library(psych)
@@ -244,12 +373,11 @@ popabove17<-as.data.frame(apply(pop[,c(21:94)],1,sum))
 popabove17<-transmute(popabove17,Code=pop$Code,Name=pop$Name,Pop=apply(pop[, c(21:94)], 1, sum))
 ```
 
-##Getting the Map
+####Getting the Map
 Get the map from GitHub:
 ```{r}
-#compressedMap= "https://github.com/EvansDataScience/data/raw/master/WAzips.zip"
+#compressedMap= "https://github.com/daiyang94815/Project/raw/master/data/Local_Authority_Districts_December_2016_Full_Clipped_Boundaries_in_Great_Britain.zip"
 ```
-
 ```{r}
 #library(utils)
 #temp=tempfile()
