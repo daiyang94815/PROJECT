@@ -1,192 +1,230 @@
+---
+title: "Final Project"
+output: html_notebook
+---
 #Final Project
 ##By Yang Dai
 
 ###Preparation
-```{r,eval=F}
+Load all kinds of libraries:
+```{r "setup", include=FALSE}
+# set working directory for easy data reading
+knitr::opts_knit$set(root.dir = 'F:/Study and Work/UW/Winter 2018/PUBPOL 599 B Computation Thinking for Governance Analytics/Project/data')
+
 library(readxl)
 library('tidyverse')
 library('DescTools')
 library(moments)
 library(scales)
 library(gmodels)
+library(lubridate)
 ```
 
 ###Get the data
-```{r,eval=F}
-accidents<-read.csv('https://github.com/daiyang94815/data/raw/master/dftRoadSafety_Accidents_2016.csv')
-casualty<-read.csv('https://github.com/daiyang94815/data/raw/master/Cas.csv')
-vehicle<-read.csv('https://github.com/daiyang94815/data/raw/master/Veh.csv')
+The data I'm using here is [road safety data](https://data.gov.uk/dataset/road-accidents-safety-data) in UK 2016.
+I also used [UK population data](https://www.ons.gov.uk/peoplepopulationandcommunity/populationandmigration/populationestimates/timeseries/gbpop/pop) in my analysis.
+I got the UK shapefiles from [here](http://geoportal.statistics.gov.uk/datasets/local-authority-districts-december-2016-full-clipped-boundaries-in-great-britain).
+```{r}
+#accidents<-read.csv('https://github.com/daiyang94815/Project/raw/master/data/dftRoadSafety_Accidents_2016.csv')
+#casualty<-read.csv('https://github.com/daiyang94815/Project/raw/master/data/Cas.csv')
+#vehicle<-read.csv('https://github.com/daiyang94815/Project/raw/master/data/Veh.csv')
+accidents<-read.csv('dftRoadSafety_Accidents_2016.csv',stringsAsFactors = F)
+casualty<-read.csv('Cas.csv',stringsAsFactors = F)
+vehicle<-read.csv('Veh.csv',stringsAsFactors = F)
+guide_lad<-read_excel('Road Accident Safety Data Guide.xls', sheet=6)
+pop<-read_excel('ukmidyearpopest2016.xls',sheet=5,skip=4)
 ```
 
-###Explore the distribution of where accidents took place (rural/urban) (dichotomous data)
+Duplicate the dataset for different uses:
+```{r}
+accidents_EDA=accidents
+accidents_map=accidents
+```
+
+
+The data has these columns:
+```{r}
+str(accidents_EDA)
+```
+
+###Explore the distribution of where accidents_EDA took place (rural/urban) (dichotomous data)
 ```{r}
 #distribution of its values:
-table(accidents$Urban_or_Rural_Area)
+table(accidents_EDA$Urban_or_Rural_Area)
 ```
-
-```{r,eval=F}
-#relative frequencies:
-prop.table(table(accidents$Urban_or_Rural_Area))
-
-#test to see if the differences are significant:
-distribution=table(accidents$Urban_or_Rural_Area)
-chisq.test(distribution)
-```
-
-The above results included the accidents that were "unallocated" to either urban or rural area. So I get rid of them and re-test:
+According to the guide, 1=Urban, 2=Rural, 3=Unallocated. So let's drop the unallocated incidents and label the codes.
 ```{r}
-accidents[accidents$Urban_or_Rural_Area==3,]$Urban_or_Rural_Area=NA
+accidents_EDA[accidents_EDA$Urban_or_Rural_Area==3,]$Urban_or_Rural_Area=NA
+accidents_EDA$Urban_or_Rural_Area=factor(as.factor(accidents_EDA$Urban_or_Rural_Area),
+                                     labels=c('Urban','Rural'))
+                             
 ```
-
-```{r,eval=F,echo=F}
-#symbolsForNA=c(3) # you can put here the symbols you want to convert to NA
-#accidents[,'Urban_or_Rural_Area']=lapply(accidents[,'Urban_or_Rural_Area'],
-                 #function(x) 
-                   #replace(x,x%in%symbolsForNA, NA))
+Re-test:
+```{r}
+table(accidents_EDA$Urban_or_Rural_Area)
+prop.table(table(accidents_EDA$Urban_or_Rural_Area))
 ```
-
-RE-testing
-```{r,eval=F}
-#clean frequency table:
-table(accidents$Urban_or_Rural_Area)
-#RE-testing
-distribution=table(accidents$Urban_or_Rural_Area)
-chisq.test(distribution)
-```
-The equal distribution of frequencies is rejected again.
-No doubt that there are much more accidents took place in urban areas.
 
 ####Central measurement and dispersion
-```{r,eval=F}
-# getting the highest count:
-modeCount=max(distribution)
-# matching with the count
-mode=distribution[distribution==modeCount]
-# result
-names(mode)
-```
-
-#####Make a function for getting mode
-```{r,eval=F}
+Make a function for getting mode:
+```{r}
 getMode=function(aColumn){
   freqTable=table(aColumn)
   maxFrequency=max(freqTable)
   names(freqTable[freqTable==maxFrequency])
 }
 ```
+Get the mode to see where accidents_EDA took place more often.
+```{r}
+getMode(accidents_EDA$Urban_or_Rural_Area)
+```
 
 ###Explore the distribution of accident severity (ordinal categorical variable)
-```{r,eval=F}
+Label the code:
+```{r}
 # getting original levels:
-levelCat=names(table(accidents$Accident_Severity))
+levelCat=names(table(accidents_EDA$Accident_Severity))
 
 # reordering original levels:
 levelCat=c(rev(levelCat))
 
 # format this into an ordinal variable:
-accidents$Accident_Severity=factor(accidents$Accident_Severity,
+accidents_EDA$Accident_Severity=factor(accidents_EDA$Accident_Severity,
                              levels = levelCat,
                              labels=c('Slight','Serious','Fatal'),ordered=T)
-table(accidents$Accident_Severity)
+table(accidents_EDA$Accident_Severity)
 ```
 
 ####Central Value
+To see which severity happens more often:
 ```{r,eval=F}
 #get the mode
-getMode(accidents$Accident_Severity)
+getMode(accidents_EDA$Accident_Severity)
 #get the median
-Median(accidents$Accident_Severity,na.rm = T)
-median(as.numeric(accidents$Accident_Severity),na.rm = T)
-cumsum(prop.table(table(accidents$Accident_Severity)))  
+Median(accidents_EDA$Accident_Severity,na.rm = T) 
+#or median(as.numeric(accidents_EDA$Accident_Severity),na.rm = T)
+cumsum(prop.table(table(accidents_EDA$Accident_Severity)))  
 ```
 
 ####Dispersion
 ```{r,eval=F}
-Gini(table(accidents$Accident_Severity))
+Gini(table(accidents_EDA$Accident_Severity))
 ```
 Gini tells that there is some concentration. The plot should help us get a better idea:
 ```{r,eval=F}
-accidents[!is.na(accidents$Accident_Severity),]%>%
+accidents_EDA[!is.na(accidents_EDA$Accident_Severity),]%>%
   ggplot(aes(Accident_Severity))+geom_bar()
 ```
+###Explore the distribution of month and hour (ordinal categorical variable)
+```{r}
+library(tidyverse)
+accidents_EDA_T=transmute(accidents_EDA,hour=hour(hm(accidents_EDA$Time)),month=month(accidents_EDA$Date))
+```
 
-###Explore number of vehicles involved in accidents (counts)
+####Central Value:
+Let's get the mode:
+```{r}
+# Applying our function:
+getMode(accidents_EDA_T$hour)
+getMode(accidents_EDA_T$month)
+```
+
+####Dispersion
+Let's see the Gini's:
+```{r}
+Gini(table(accidents_EDA_T$hour))
+Gini(table(accidents_EDA_T$month))
+```
+Gini tells that accidents_EDA happaned roughly equally through 12 months, but have some concentration during a day. The plot should help us get a better idea:
+```{r}
+data=accidents_EDA_T[!is.na(accidents_EDA_T$month),]
+c = ggplot(data,aes(as.factor(month)))
+c + geom_bar()
+```
+
+```{r}
+data=accidents_EDA_T[!is.na(accidents_EDA_T$hour),]
+c = ggplot(data,aes(as.factor(hour)))
+c + geom_bar()
+```
+We can see most accidents_EDA happened during morning peak (8am) and afternoon peak (3pm-6pm).
+
+###Explore number of vehicles involved in accidents_EDA (counts)
 ####Centrality
-```{r,eval=F}
-summary(accidents$Number_of_Vehicles)
+```{r}
+summary(accidents_EDA$Number_of_Vehicles)
 ```
 
 ####Skewness
 ```{r,eval=F}
-skewness(accidents$Number_of_Vehicles,na.rm=T)#what does this mean?
+skewness(accidents_EDA$Number_of_Vehicles,na.rm=T)
 ```
 
 ####Kurtosis
 ```{r,eval=F}
-kurtosis(accidents$Number_of_Vehicles,na.rm=T)
+kurtosis(accidents_EDA$Number_of_Vehicles,na.rm=T)
 ```
 
 ```{r,eval=F}
-accidents%>%
+accidents_EDA%>%
   ggplot(aes(Number_of_Vehicles))+geom_histogram(bins = 50)+
   theme(axis.text.x = element_text(angle = 60,hjust = 1,size = 5))+
   scale_x_continuous(labels = comma)
 ```
+We can see most accidents_EDA involved 2 vehicles.
 
 ###Explore the relationship between Road Surface Conditions and Accident Severity (Categorical - Categorical)
 
 
 ```{r,eval=F}
-table(accidents$Road_Surface_Conditions)
-accidents$Road_Surface_Conditions=factor(as.factor(accidents$Road_Surface_Conditions),
-                                         levels=names(table(accidents$Road_Surface_Conditions)),
+table(accidents_EDA$Road_Surface_Conditions)
+accidents_EDA$Road_Surface_Conditions=factor(as.factor(accidents_EDA$Road_Surface_Conditions),
                              labels=c('Data missing or out of range','Dry','Wet or damp','Snow',
-                                      'Frost or ice','Flood over 3cm. deep'))#not working?
+                                      'Frost or ice','Flood over 3cm. deep'))
 ```
 
 
 contingency table (crosstab):
 ```{r,eval=F}
-table(accidents$Road_Surface_Conditions,accidents$Accident_Severity)
-CrossTable(accidents$Road_Surface_Conditions,accidents$Accident_Severity,prop.t=F, prop.r=F, prop.c=F,prop.chisq=F)
+table(accidents_EDA$Road_Surface_Conditions,accidents_EDA$Accident_Severity)
+CrossTable(accidents_EDA$Road_Surface_Conditions,accidents_EDA$Accident_Severity,prop.t=F, prop.r=F, prop.c=F,prop.chisq=F)
 ```
 
 ignore data that is missing or out of range in Road_Surface_Conditions:
 ```{r,eval=F}
-accidents_copy=accidents
-levels(accidents_copy$Road_Surface_Conditions)[1]=NA
-CrossTable(accidents_copy$Road_Surface_Conditions,accidents_copy$Accident_Severity,prop.t=T, prop.r=F, prop.c=F,prop.chisq=F)
+levels(accidents_EDA$Road_Surface_Conditions)[1]=NA
+CrossTable(accidents_EDA$Road_Surface_Conditions,accidents_EDA$Accident_Severity,prop.t=T, prop.r=F, prop.c=F,prop.chisq=F)
 ```
 
 compute percents (relative values) marginally:
 ```{r,eval=F}
 # severity by road surface condition:
-CrossTable(accidents_copy$Road_Surface_Conditions,accidents_copy$Accident_Severity,prop.t=F, prop.r=T, prop.c=F,prop.chisq=F)
+CrossTable(accidents_EDA$Road_Surface_Conditions,accidents_EDA$Accident_Severity,prop.t=F, prop.r=T, prop.c=F,prop.chisq=F)
 # road surface condition by severity:
-CrossTable(accidents_copy$Road_Surface_Conditions,accidents_copy$Accident_Severity,prop.t=F, prop.r=F, prop.c=T,prop.chisq=F)
+CrossTable(accidents_EDA$Road_Surface_Conditions,accidents_EDA$Accident_Severity,prop.t=F, prop.r=F, prop.c=T,prop.chisq=F)
 ```
 
 test the Ho that the variables are independent (not associated):
 ```{r,eval=F}
-CrossTable(accidents_copy$Road_Surface_Conditions,accidents_copy$Accident_Severity,prop.t=F, prop.r=F, prop.c=F,prop.chisq=F,chisq=T)
+CrossTable(accidents_EDA$Road_Surface_Conditions,accidents_EDA$Accident_Severity,prop.t=F, prop.r=F, prop.c=F,prop.chisq=F,chisq=T)
 ```
 
 visual representation:
 ```{r,eval=F}
-legendPlot=levels(as.factor(unique(accidents_copy$Road_Surface_Conditions)))
-bartable = table(accidents_copy$Road_Surface_Conditions,accidents_copy$Accident_Severity)  ## get the cross tab
+legendPlot=levels(as.factor(unique(accidents_EDA$Accident_Severity)))
+bartable = table(accidents_EDA$Accident_Severity,accidents_EDA$Road_Surface_Conditions)  ## get the cross tab
 barplot(bartable, beside = TRUE,legend=legendPlot)  ## plot
 ```
 
 represent the cross table in a nicer way:
 ```{r,eval=F}
 #turn table into a data frame:
-accidents_copyTb=as.data.frame(table(accidents_copy$Road_Surface_Conditions,accidents_copy$Accident_Severity))
-names(accidents_copyTb)=c('Road_Surface_Conditions','Accident_Severity','freq')
+accidents_EDA_Tb=as.data.frame(table(accidents_EDA$Accident_Severity,accidents_EDA$Road_Surface_Conditions))
+names(accidents_EDA_Tb)=c('Accident_Severity','Road_Surface_Conditions','freq')
 
 #Plot the Data
-accidents_copyTb%>%
-  ggplot(aes(Road_Surface_Conditions, Accident_Severity)) + theme_bw()+ #white background
+accidents_EDA_Tb%>%
+  ggplot(aes(Accident_Severity,Road_Surface_Conditions )) + theme_bw()+ #white background
   geom_point(aes(size = freq), colour = "green")+ #green dot sized by frequency
   geom_text(aes(label = freq))+ # frequency value as label
   theme(legend.position="none")+ # no legend
@@ -194,3 +232,110 @@ accidents_copyTb%>%
   labs(title="You see association?") # with titles!
 ```
 
+Because they coded 1 as Fatal, 3 as Slight, I want them to be reversed to reflect common sense (higher score means more dangerous).
+```{r}
+library(psych)
+accidents_map$Accident_Severity=reverse.code(-1,accidents_map$Accident_Severity)
+```
+
+Because one has to be 17 or above to legally drive in UK, I sum the popluation whose age is 17 or above.
+```{r}
+popabove17<-as.data.frame(apply(pop[,c(21:94)],1,sum))
+popabove17<-transmute(popabove17,Code=pop$Code,Name=pop$Name,Pop=apply(pop[, c(21:94)], 1, sum))
+```
+
+##Getting the Map
+Get the map from GitHub:
+```{r}
+#compressedMap= "https://github.com/EvansDataScience/data/raw/master/WAzips.zip"
+```
+
+```{r}
+#library(utils)
+#temp=tempfile()
+#download.file(compressedMap, temp)
+#unzip(temp)
+```
+To know what shapefiles are now in your directory:
+```{r}
+(maps=list.files(pattern = 'shp'))
+```
+You select which map from the object maps you need:
+```{r}
+library(rgdal)
+GBMap <- rgdal::readOGR("Local_Authority_Districts_December_2016_Full_Clipped_Boundaries_in_Great_Britain.shp",stringsAsFactors=F) # use name
+```
+Now that you have a map, you can use common commands and see what you have:
+```{r}
+names(GBMap)
+```
+The Local Authority Districts (LAD) are coded as numbers in the dataset. I want to assign them the names according to the guide.
+```{r}
+accidents_map=merge(accidents_map,guide_lad,by.x='Local_Authority_.District.',by.y='code',all.x=T)
+accidents_map=rename(accidents_map,lab_lad=label)
+```
+I want to know which LADs are dangerous (have higher total accident-severity score). So I aggregate the accident severity to the LAD level.
+```{r}
+accidents_lad=aggregate(accidents_map$Accident_Severity,list(accidents_map$lab_lad),sum)
+names(accidents_lad)=c('Local_Authority_.District.','Accident_Severity')
+```
+Then I merge the accident date and population data, then send it to the map
+```{r}
+accidentsGBmap=merge(GBMap,accidents_lad, by.x='lad16nm', by.y='Local_Authority_.District.',all=T)
+accidentsGBmap=merge(accidentsGBmap,popabove17, by.x='lad16nm', by.y='Name',all=T)
+```
+Total accident severity is not good, so I calculate the ratio (severity to population).
+```{r}
+accidentsGBmap$AcciDen=accidentsGBmap$Accident_Severity/accidentsGBmap$Pop
+```
+Let's explore the ratio in each LAD:
+```{r}
+summary(accidentsGBmap$AcciDen)
+```
+We got 8 NAs,
+```{r}
+# notice the use of '@data'
+#finding the issue:
+accidentsGBmap@data[is.na(accidentsGBmap$AcciDen),]['AcciDen']
+```
+We need to get rid of those rows:
+```{r}
+accidentsGBmap=accidentsGBmap[!is.na(accidentsGBmap$AcciDen),]
+```
+That has solved the problem:
+```{r}
+summary(accidentsGBmap$AcciDen)
+```
+We will plot the new variable asking for 5 quantiles. Let's follow these steps:
+1.Install and load the necessary packages to manage color and divisions:
+```{r}
+library(RColorBrewer)
+library(classInt)
+```
+2.Define the input:
+```{r}
+varToPLot=accidentsGBmap$AcciDen
+```
+3.Get colors and intervals (you can choose palettes from here):
+```{r}
+numberOfClasses = 3
+colorForScale='YlGnBu'
+colors = brewer.pal(numberOfClasses, colorForScale)
+intervals <- classIntervals(varToPLot, numberOfClasses, 
+                            style = "quantile",
+                            dataPrecision=5)
+colorPallette <- findColours(intervals, colors)
+```
+4.Plot
+```{r}
+legendText="Accident Severity Rate"
+shrinkLegend=0.5
+title="Accident Severity Rate in UK 2016"
+
+plot(accidentsGBmap, col = colorPallette,border='grey',main=title,add=F)
+
+legend('topright', legend = names(attr(colorPallette, "table")), 
+       fill = attr(colorPallette, "palette"), cex = shrinkLegend, 
+       bty = "n",
+       title=legendText)
+```
