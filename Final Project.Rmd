@@ -21,13 +21,15 @@ library(lubridate)
 ```
 
 ###Get the data
-The data I'm using here is [road safety data](https://data.gov.uk/dataset/road-accidents-safety-data) in UK 2016.
+The data I'm using here is [road safety data](https://data.gov.uk/dataset/road-accidents-safety-data) in UK 2016. There are 3 datasets: Accidents, Vehicle, Casualty. As it's easy to understand, an accident is mostly likely involve more than 1 vehicle, and it's likely to have multiple casualties from different vehicles. So Vehicle and Casualty are linked with Accidents by Accident_Index, Casualty and Vehicle are linked by Vehicle_Reference.
+
 I also used [UK population data](https://www.ons.gov.uk/peoplepopulationandcommunity/populationandmigration/populationestimates/timeseries/gbpop/pop) in my analysis.
+
 I got the UK shapefiles from [here](http://geoportal.statistics.gov.uk/datasets/local-authority-districts-december-2016-full-clipped-boundaries-in-great-britain).
 ```{r}
 #accidents<-read.csv('https://github.com/daiyang94815/Project/raw/master/data/dftRoadSafety_Accidents_2016.csv')
-#casualty<-read.csv('https://github.com/daiyang94815/Project/raw/master/data/Cas.csv')
 #vehicle<-read.csv('https://github.com/daiyang94815/Project/raw/master/data/Veh.csv')
+#casualty<-read.csv('https://github.com/daiyang94815/Project/raw/master/data/Cas.csv')
 #temp = tempfile(fileext = ".xlsx") # use always with Excel
 #dataURL <- "https://github.com/daiyang94815/Project/raw/master/data/Road%20Accident%20Safety%20Data%20Guide.xls" # link to data
 #download.file(dataURL, destfile=temp, mode='wb')  # file will be downloaded temporarily
@@ -38,8 +40,8 @@ I got the UK shapefiles from [here](http://geoportal.statistics.gov.uk/datasets/
 #pop = read_excel(temp, sheet =5,skip=4)
 
 accidents<-read.csv('dftRoadSafety_Accidents_2016.csv',stringsAsFactors = F)
-casualty<-read.csv('Cas.csv',stringsAsFactors = F)
 vehicle<-read.csv('Veh.csv',stringsAsFactors = F)
+casualty<-read.csv('Cas.csv',stringsAsFactors = F)
 guide_lad<-read_excel('Road Accident Safety Data Guide.xls', sheet=6)
 pop<-read_excel('ukmidyearpopest2016.xls',sheet=5,skip=4)
 ```
@@ -74,6 +76,7 @@ Re-test:
 table(accidents_EDA$Urban_or_Rural_Area)
 prop.table(table(accidents_EDA$Urban_or_Rural_Area))
 ```
+Apparently, accidents happen more often in urban areas.
 
 ####Central measurement and dispersion
 Make a function for getting mode:
@@ -102,6 +105,9 @@ levelCat=c(rev(levelCat))
 accidents_EDA$Accident_Severity=factor(accidents_EDA$Accident_Severity,
                              levels = levelCat,
                              labels=c('Slight','Serious','Fatal'),ordered=T)
+```
+Then see the distribution:
+```{r}
 table(accidents_EDA$Accident_Severity)
 ```
 
@@ -115,6 +121,7 @@ Median(accidents_EDA$Accident_Severity,na.rm = T)
 #or median(as.numeric(accidents_EDA$Accident_Severity),na.rm = T)
 cumsum(prop.table(table(accidents_EDA$Accident_Severity)))  
 ```
+Most of the accidents happened are slight.
 
 ####Dispersion
 ```{r,eval=F}
@@ -125,14 +132,17 @@ Gini tells that there is some concentration. The plot should help us get a bette
 accidents_EDA[!is.na(accidents_EDA$Accident_Severity),]%>%
   ggplot(aes(Accident_Severity))+geom_bar()
 ```
+
 ###Explore the distribution of month and hour (ordinal categorical variable)
+Now I want to know how accidents happen in the year and in a day.
+Here I create 2 new variables of hour and month.
 ```{r}
 library(tidyverse)
 accidents_EDA_T=transmute(accidents_EDA,hour=hour(hm(accidents_EDA$Time)),month=month(accidents_EDA$Date))
 ```
 
 ####Central Value:
-Let's get the mode:
+Let's see in what hour and what month did accidents happen most:
 ```{r}
 # Applying our function:
 getMode(accidents_EDA_T$hour)
@@ -142,8 +152,8 @@ getMode(accidents_EDA_T$month)
 ####Dispersion
 Let's see the Gini's:
 ```{r}
-Gini(table(accidents_EDA_T$hour))
 Gini(table(accidents_EDA_T$month))
+Gini(table(accidents_EDA_T$hour))
 ```
 Gini tells that accidents_EDA happaned roughly equally through 12 months, but have some concentration during a day. The plot should help us get a better idea:
 ```{r}
@@ -161,36 +171,46 @@ We can see most accidents_EDA happened during morning peak (8am) and afternoon p
 
 ###Explore number of vehicles involved in accidents_EDA (counts)
 ####Centrality
+Now I want to know usually how many vehicles are involved in an accident:
 ```{r}
 summary(accidents_EDA$Number_of_Vehicles)
 ```
+We can see most accidents involve 2 vehicles, but there is 1 major accidents involving 16 vehicles!
 
 ####Skewness
 ```{r,eval=F}
 skewness(accidents_EDA$Number_of_Vehicles,na.rm=T)
 ```
+Positive value indicates the distribution is right-skewed, meaning most accidents involve few vehicles.
 
 ####Kurtosis
 ```{r,eval=F}
 kurtosis(accidents_EDA$Number_of_Vehicles,na.rm=T)
 ```
+Positive value indicates it's more concentrated than a normal distribution (the mode is very siginificant.)
 
 ```{r,eval=F}
 accidents_EDA%>%
-  ggplot(aes(Number_of_Vehicles))+geom_histogram(bins = 50)+
-  theme(axis.text.x = element_text(angle = 60,hjust = 1,size = 5))+
+  ggplot(aes(Number_of_Vehicles))+geom_histogram(bins = 30)+
+  theme(axis.text.x = element_text(angle = 0,hjust = 0,size = 8))+
   scale_x_continuous(labels = comma)
 ```
-We can see most accidents_EDA involved 2 vehicles.
+We can see most accidents involved 2 vehicles.
 
 ###Explore the relationship between Road Surface Conditions and Accident Severity (Categorical - Categorical)
+Now I want to know what is the relationship between road surface conditions and accident severity.
+Let's label the road surface conditions first.
 ```{r,eval=F}
-table(accidents_EDA$Road_Surface_Conditions)
 accidents_EDA$Road_Surface_Conditions=factor(as.factor(accidents_EDA$Road_Surface_Conditions),
                              labels=c('Data missing or out of range','Dry','Wet or damp','Snow',
                                       'Frost or ice','Flood over 3cm. deep'))
 ```
-contingency table (crosstab):
+Then explore the distribution:
+```{r}
+table(accidents_EDA$Road_Surface_Conditions)
+```
+
+better to see with a contingency table (crosstab):
 ```{r,eval=F}
 table(accidents_EDA$Road_Surface_Conditions,accidents_EDA$Accident_Severity)
 CrossTable(accidents_EDA$Road_Surface_Conditions,accidents_EDA$Accident_Severity,prop.t=F, prop.r=F, prop.c=F,prop.chisq=F)
@@ -209,13 +229,14 @@ CrossTable(accidents_EDA$Road_Surface_Conditions,accidents_EDA$Accident_Severity
 # road surface condition by severity:
 CrossTable(accidents_EDA$Road_Surface_Conditions,accidents_EDA$Accident_Severity,prop.t=F, prop.r=F, prop.c=T,prop.chisq=F)
 ```
-
-test the Ho that the variables are independent (not associated):
+I think the data on "Snow","Frost or ice","Flood over 3cm. deep" is too few to draw some conclusion, but we can see there's slightly higher portion of Serious accidents on Wet or damp roads than on Dry road.
+Let's test the Ho that the variables are independent (not associated/different in portion of accident severity):
 ```{r,eval=F}
 CrossTable(accidents_EDA$Road_Surface_Conditions,accidents_EDA$Accident_Severity,prop.t=F, prop.r=F, prop.c=F,prop.chisq=F,chisq=T)
 ```
+Chi-squared test reject the null hypothesis that there is no difference in accident severity with different road surface conditions.
 
-visual representation:
+Let's create the visual representation:
 ```{r,eval=F}
 legendPlot=levels(as.factor(unique(accidents_EDA$Accident_Severity)))
 bartable = table(accidents_EDA$Accident_Severity,accidents_EDA$Road_Surface_Conditions)  ## get the cross tab
@@ -239,50 +260,41 @@ accidents_EDA_Tb%>%
 ```
 
 ###What attributes may increase the chance that an accident is serious (rather than slight)? (Logistic Regression)
-I only want to know how the attributes affect the probability increase from slight to serious, so I need to drop those fatal incidents, and label 3 as Slight, 2 as Serious:
+I only want to know how the attributes affect the probability increase from slight to serious, so I need to drop those fatal incidents:
 ```{r}
-accidents_reg=accidents[accidents$Accident_Severity!=1,]
+accidents_reg=select(accidents,Accident_Index,Accident_Severity)
+accidents_reg=accidents_reg[accidents_reg$Accident_Severity!=1,]
 ```
-
-```{r}
-x=1
-for (x in 1:length(accidents_reg$Accident_Severity)) {
-  if(accidents_reg[x,'Accident_Severity']==3)accidents_reg[x,'Accident_Severity']=1
-}
-```
+And recode 0 as Serious, 1 as Slight.
 ```{r}
 accidents_reg$Accident_Severity=accidents_reg$Accident_Severity-2
 accidents_reg$Accident_Severity=as.factor(accidents_reg$Accident_Severity)
 ```
-
-
-```{r}
-#accidents_reg[,'Accident_Severity']=as.data.frame(lapply(accidents_reg[,'Accident_Severity'],                        function(x)ifelse(x==3,1,x)))
-```
-
+Check the dependent variable (accident severity) is dichotomous.
 ```{r}
 barplot(table(accidents_reg$Accident_Severity))
 ```
-The linear regression model computed the coefficients of X so that we predict the value of Y, being those continuous variables. In logistic regression, we have only two values, 'Slight' and 'Serious' in Y. Then, the model will instead help you see which of the X variables will increase the 'odds' of getting a 'Serious'.
+In logistic regression, we have only two values, 0 and 1 ('Serious' and 'Slight') in Y. Then, the model will instead help you see which of the X variables will increase the 'odds' of getting a 1 ('Slight').
 
 Some data cleaning and formatting before regression:
 ```{r}
-vehicle_reg=dplyr::select(vehicle,Accident_Index,Sex_of_Driver,Age_of_Driver,Age_of_Vehicle)
+vehicle_reg=select(vehicle,Accident_Index,Sex_of_Driver,Age_of_Driver,Age_of_Vehicle)
 vehicle_reg=vehicle_reg[vehicle_reg$Sex_of_Driver%in%c(1,2)&vehicle_reg$Age_of_Driver!=-1&vehicle_reg$Age_of_Vehicle!=-1,] #include only Male and Female and valid age
 vehicle_reg$Sex_of_Driver=vehicle_reg$Sex_of_Driver-1 #recode Male as 0, Female as 1
 ```
 
+I averaged Sex of Driver, Age of Driver, Age of Vehicle. I think it's easy to understand why I chose last 2 variables. The logic behind average Sex of Driver lay on how I code them. As you see above, I code Male as 0, Female as 1. Thus, if the average Sex of Driver is close to 1, that means there are more female drivers, and vice versa.
 ```{r}
 accidents_sex=aggregate(list(Avg_Sex_of_Driver=vehicle_reg$Sex_of_Driver),list(Accident_Index=vehicle_reg$Accident_Index),mean)
 accidents_driverAge=aggregate(list(Avg_Age_of_Driver=vehicle_reg$Age_of_Driver),list(Accident_Index=vehicle_reg$Accident_Index),mean)
 accidents_vehicleAge=aggregate(list(Avg_Age_of_Vehicle=vehicle_reg$Age_of_Vehicle),list(Accident_Index=vehicle_reg$Accident_Index),mean)
 ```
 
+Merge all the dependent and independent variables into 1 dataframe.
 ```{r}
 accidents_reg=merge(accidents_reg,accidents_sex)
 merge=merge(accidents_driverAge,accidents_vehicleAge)
 accidents_reg=merge(accidents_reg,merge)
-accidents_reg=dplyr::select(accidents_reg,Accident_Index,Accident_Severity,Avg_Sex_of_Driver,Avg_Age_of_Driver,Avg_Age_of_Vehicle)
 ```
 
 The way to request this model is very similar to linear regression:
@@ -321,14 +333,14 @@ Logistics regression can have similar problems that need to be evaluated as in t
 The confusion matrix requires two inputs, the actual values and the values predicted by the model:
 ```{r}
 actualValues=accidents_reg$Accident_Severity
-predictedValues=as.numeric(predict(LogitSev_a, type = 'response'))
+predictedValues=predict(LogitSev_a, type = 'response')
 ```
 Using the values above:
 ```{r}
 library(InformationValue)
 
 cm=confusionMatrix(actualValues, predictedValues)
-row.names(cm)=c('PredictedNegative','PredictedPositive')
+#row.names(cm)=c('PredictedNegative','PredictedPositive')
 colnames(cm)=c('ActualNegative','ActualPositive')
 cm
 ```
@@ -361,7 +373,12 @@ specificity(actualValues, predictedValues)
 The interpretation of these values needs to be contextualized according to the decision-making situation.
 
 ###Mapping Accident Severity
-Because they coded 1 as Fatal, 3 as Slight, I want them to be reversed to reflect common sense (higher score means more dangerous).
+Subset the data first:
+```{r}
+accidents_map=select(accidents,Accident_Severity,Local_Authority_.District.)
+```
+
+In mapping, I want to code the accident severity differently from above. Because they coded 1 as Fatal, 3 as Slight, I want them to be reversed to reflect common sense (higher score means more dangerous).
 ```{r}
 library(psych)
 accidents_map$Accident_Severity=reverse.code(-1,accidents_map$Accident_Severity)
@@ -370,7 +387,7 @@ accidents_map$Accident_Severity=reverse.code(-1,accidents_map$Accident_Severity)
 Because one has to be 17 or above to legally drive in UK, I sum the popluation whose age is 17 or above.
 ```{r}
 popabove17<-as.data.frame(apply(pop[,c(21:94)],1,sum))
-popabove17<-transmute(popabove17,Code=pop$Code,Name=pop$Name,Pop=apply(pop[, c(21:94)], 1, sum))
+popabove17<-transmute(popabove17,Code=pop$Code,Name=pop$Name,Pop=apply(pop[,c(21:94)],1,sum))
 ```
 
 ####Getting the Map
@@ -402,10 +419,10 @@ The Local Authority Districts (LAD) are coded as numbers in the dataset. I want 
 accidents_map=merge(accidents_map,guide_lad,by.x='Local_Authority_.District.',by.y='code',all.x=T)
 accidents_map=rename(accidents_map,lab_lad=label)
 ```
-I want to know which LADs are dangerous (have higher total accident-severity score). So I aggregate the accident severity to the LAD level.
+I want to know which LADs are dangerous (have higher total accident severity score). So I aggregate the accident severity to the LAD level. Remember how I code the accident severity, I reversed the original code, so now 1 is Slight, 2 is Serious, and 3 is Fatal. And the aggregation of these value is a rough estimation (accident severity score) of how dangerous a LAD is. This contains a implict (and not necessarily right) assumption that a fatal accident is 2 times more dangerous than a slight one.
 ```{r}
 accidents_lad=aggregate(accidents_map$Accident_Severity,list(accidents_map$lab_lad),sum)
-names(accidents_lad)=c('Local_Authority_.District.','Accident_Severity')
+names(accidents_lad)=c('Local_Authority_.District.','Accident_Severity_Score')
 ```
 Then I merge the accident date and population data, then send it to the map
 ```{r}
@@ -414,7 +431,7 @@ accidentsGBmap=merge(accidentsGBmap,popabove17, by.x='lad16nm', by.y='Name',all=
 ```
 Total accident severity is not good, so I calculate the ratio (severity to population).
 ```{r}
-accidentsGBmap$AcciDen=accidentsGBmap$Accident_Severity/accidentsGBmap$Pop
+accidentsGBmap$AcciDen=accidentsGBmap$Accident_Severity_Score/accidentsGBmap$Pop
 ```
 Let's explore the ratio in each LAD:
 ```{r}
