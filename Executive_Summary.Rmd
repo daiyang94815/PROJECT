@@ -1,0 +1,275 @@
+---
+title: "Road Safety in UK 2016"
+author: "Yang Dai, MPA Candidate, Evans School of Public Policy & Governance"
+date: "March 2018"
+output: pdf_document
+---
+```{r "setup", include=FALSE}
+# set working directory for easy data reading
+knitr::opts_knit$set(root.dir = 'F:/Study and Work/UW/Winter 2018/PUBPOL 599 B Computation Thinking for Governance Analytics/Project/data')
+knitr::opts_chunk$set(cache=TRUE)
+library(rmarkdown)
+library(knitr)
+library(readxl)
+library('tidyverse')
+library('DescTools')
+library(moments)
+library(scales)
+library(gmodels)
+library(lubridate)
+```
+#Introduction
+There are more than 130,000 road accidents logged in UK in 2016. This study aims to understand where and when did these accidents happen, and what factors may be associated with certain types of accidents.
+
+##Dataset
+[Road safety data in UK in 2016](https://data.gov.uk/dataset/road-accidents-safety-data)  
+- There are 3 datasets: Accidents, Vehicle, Casualty. As it's easy to understand, an accident is mostly likely involve more than 1 vehicle, and it's likely to have multiple casualties from different vehicles. So Vehicle and Casualty are linked with Accidents by Accident_Index, Casualty and Vehicle are linked by Vehicle_Reference.
+
+[UK population data 2016 mid-year](https://www.ons.gov.uk/peoplepopulationandcommunity/populationandmigration/populationestimates/timeseries/gbpop/pop)
+
+[UK shapefiles](http://geoportal.statistics.gov.uk/datasets/local-authority-districts-december-2016-full-clipped-boundaries-in-great-britain)
+```{r, echo=FALSE,  message=FALSE, warning=FALSE}
+accidents<-read.csv('https://github.com/daiyang94815/Project/raw/master/data/dftRoadSafety_Accidents_2016.csv',stringsAsFactors = F)
+vehicle<-read.csv('https://github.com/daiyang94815/Project/raw/master/data/Veh.csv',stringsAsFactors = F)
+#casualty<-read.csv('https://github.com/daiyang94815/Project/raw/master/data/Cas.csv')
+
+temp = tempfile(fileext = ".xls") # use always with Excel
+dataURL <- "https://github.com/daiyang94815/Project/raw/master/data/Road%20Accident%20Safety%20Data%20Guide.xls" # link to data
+download.file(dataURL, destfile=temp, mode='wb')  # file will be downloaded temporarily
+guide_lad = read_excel(temp, sheet =6)
+
+temp = tempfile(fileext = ".xls") # use always with Excel
+dataURL <- "https://github.com/daiyang94815/Project/raw/master/data/ukmidyearpopest2016.xls" # link to data
+download.file(dataURL, destfile=temp, mode='wb')  # file will be downloaded temporarily
+pop = read_excel(temp, sheet =5,skip=4)
+
+#accidents<-read.csv('dftRoadSafety_Accidents_2016.csv',stringsAsFactors = F)
+#vehicle<-read.csv('Veh.csv',stringsAsFactors = F)
+#casualty<-read.csv('Cas.csv',stringsAsFactors = F)
+#guide_lad<-read_excel('Road Accident Safety Data Guide.xls', sheet=6)
+#pop<-read_excel('ukmidyearpopest2016.xls',sheet=5,skip=4)
+```
+
+```{r, echo=FALSE,  message=FALSE, warning=FALSE}
+accidents_EDA=accidents
+accidents_map=accidents
+accidents_reg=accidents
+vehicle_reg=vehicle
+```
+
+#Findings
+1. There are more accidents happened in urban area than rural area.
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+accidents_EDA[accidents_EDA$Urban_or_Rural_Area==3,]$Urban_or_Rural_Area=NA
+accidents_EDA$Urban_or_Rural_Area=factor(as.factor(accidents_EDA$Urban_or_Rural_Area),
+                                     labels=c('Urban','Rural'))
+                             
+```
+```{r echo=FALSE, message=FALSE, warning=FALSE,results='asis'}
+kable(table(accidents_EDA$Urban_or_Rural_Area),col.names = c('Area','Count'))
+kable(prop.table(table(accidents_EDA$Urban_or_Rural_Area)),col.names = c('Area','Percent'))
+```
+
+2. Most of the accidents are Slight, with few Serious accidents and even fewer Fatal ones.
+```{r, echo=FALSE,  message=FALSE, warning=FALSE}
+#Label the code:
+# getting original levels:
+levelCat=names(table(accidents_EDA$Accident_Severity))
+
+# reordering original levels:
+levelCat=c(rev(levelCat))
+
+# format this into an ordinal variable:
+accidents_EDA$Accident_Severity=factor(accidents_EDA$Accident_Severity,
+                             levels = levelCat,
+                             labels=c('Slight','Serious','Fatal'),ordered=T)
+```
+```{r, echo=FALSE,  message=FALSE, warning=FALSE,results='asis'}
+kable(table(accidents_EDA$Accident_Severity),col.names = c('Accident Severity','Count'))
+```
+```{r, echo=FALSE,  message=FALSE, warning=FALSE,results='asis'}
+kable(cumsum(prop.table(table(accidents_EDA$Accident_Severity))),col.names = 'Cum. Percent')
+```
+
+```{r, echo=FALSE,  message=FALSE, warning=FALSE,fig.dim=c(3,3),fig.align='center'}
+accidents_EDA[!is.na(accidents_EDA$Accident_Severity),]%>%
+  ggplot(aes(Accident_Severity))+geom_bar()+ theme(axis.title.x=element_blank())
+```
+
+3. Most accidents happened during morning peak (8am) and afternoon peak (3pm-6pm).Accidents happened roughly equally (in amount) through 12 months.
+```{r, echo=FALSE,  message=FALSE, warning=FALSE}
+library(tidyverse)
+accidents_EDA_T=transmute(accidents_EDA,hour=hour(hm(accidents_EDA$Time)),month=month(accidents_EDA$Date))
+```
+
+```{r, echo=FALSE,  message=FALSE, warning=FALSE,fig.dim=c(5,4),fig.align='center'}
+data=accidents_EDA_T[!is.na(accidents_EDA_T$month),]
+c = ggplot(data,aes(as.factor(month)))
+c + geom_bar()+labs(x='Month',title='Accident Counts within a Year')+theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r, echo=FALSE,  message=FALSE, warning=FALSE,fig.dim=c(7,4),fig.align='center'}
+data=accidents_EDA_T[!is.na(accidents_EDA_T$hour),]
+c = ggplot(data,aes(as.factor(hour)))
+c + geom_bar()+labs(x='Time',title='Accident Counts within a Day')+theme(plot.title = element_text(hjust = 0.5))
+```
+
+4. 99% of accidents involved 4 vehicles and below. 2 vehicles involved is most common.
+```{r, echo=FALSE,  message=FALSE, warning=FALSE,fig.dim=c(7,4),fig.align='center'}
+accidents_EDA%>%
+  ggplot(aes(as.factor(Number_of_Vehicles)))+geom_bar()+
+  theme(plot.title = element_text(hjust = 0.5))+
+  labs(x='Number of Vehicles',title='Number of Vehicles involved in an accident')
+```
+
+5. There are statistically significant yet small differences between the distribution of Accident Severity within each type of Road Surface Condition.
+```{r, echo=FALSE,  message=FALSE, warning=FALSE}
+accidents_EDA$Road_Surface_Conditions=factor(as.factor(accidents_EDA$Road_Surface_Conditions),
+                             labels=c('Data missing or out of range','Dry','Wet or damp','Snow',
+                                      'Frost or ice','Flood over 3cm. deep'))
+
+#ignore data that is missing or out of range in Road_Surface_Conditions:
+levels(accidents_EDA$Road_Surface_Conditions)[1]=NA
+```
+```{r, echo=FALSE,  message=FALSE, warning=FALSE,results='asis'}
+# severity by road surface condition:
+library(pander)
+pander(CrossTable(accidents_EDA$Road_Surface_Conditions,accidents_EDA$Accident_Severity,prop.t=T, prop.r=F, prop.c=F,prop.chisq=F,chisq=T))
+```
+I think the data on "Snow","Frost or ice","Flood over 3cm. deep" is too few to draw some conclusion, but we can see there's slightly higher portion of Serious accidents on Wet or damp roads than on Dry road.
+Chi-squared test reject the null hypothesis that there is no difference in accident severity with different road surface conditions.
+```{r, echo=FALSE,  message=FALSE, warning=FALSE,fig.dim=c(7,4),fig.align='center'}
+legendPlot=levels(as.factor(unique(accidents_EDA$Accident_Severity)))
+bartable = table(accidents_EDA$Accident_Severity,accidents_EDA$Road_Surface_Conditions)  ## get the cross tab
+barplot(bartable, beside = TRUE,legend=legendPlot)  ## plot
+```
+```{r, echo=FALSE,  message=FALSE, warning=FALSE,fig.align='center'}
+#turn table into a data frame:
+accidents_EDA_Tb=as.data.frame(table(accidents_EDA$Accident_Severity,accidents_EDA$Road_Surface_Conditions))
+names(accidents_EDA_Tb)=c('Accident_Severity','Road_Surface_Conditions','freq')
+
+#Plot the Data
+accidents_EDA_Tb%>%
+  ggplot(aes(Accident_Severity,Road_Surface_Conditions )) + theme_bw()+ #white background
+  geom_point(aes(size = freq), colour = "green")+ #green dot sized by frequency
+  geom_text(aes(label = freq))+ # frequency value as label
+  theme(legend.position="none",axis.title.x=element_blank(),axis.title.y=element_blank())+ # no legend
+  scale_size_continuous(range=c(5,30))+ # limits of point size
+  labs(title="Accident Severity in different Road Surface Conditions") # with titles!
+```
+
+6. If there are more female driver involved in an accident, this accident tends to be a Slight one.
+```{r, echo=FALSE,  message=FALSE, warning=FALSE}
+accidents_reg=select(accidents,Accident_Index,Accident_Severity)
+accidents_reg=accidents_reg[accidents_reg$Accident_Severity!=1,]
+```
+```{r, echo=FALSE,  message=FALSE, warning=FALSE}
+accidents_reg$Accident_Severity=accidents_reg$Accident_Severity-2
+accidents_reg$Accident_Severity=as.factor(accidents_reg$Accident_Severity)
+```
+```{r, echo=FALSE,  message=FALSE, warning=FALSE}
+vehicle_reg=select(vehicle,Accident_Index,Sex_of_Driver,Age_of_Driver,Age_of_Vehicle)
+vehicle_reg=vehicle_reg[vehicle_reg$Sex_of_Driver%in%c(1,2)&vehicle_reg$Age_of_Driver!=-1&vehicle_reg$Age_of_Vehicle!=-1,] #include only Male and Female and valid age
+vehicle_reg$Sex_of_Driver=vehicle_reg$Sex_of_Driver-1 #recode Male as 0, Female as 1
+```
+```{r, echo=FALSE,  message=FALSE, warning=FALSE}
+accidents_sex=aggregate(list(Avg_Sex_of_Driver=vehicle_reg$Sex_of_Driver),list(Accident_Index=vehicle_reg$Accident_Index),mean)
+accidents_driverAge=aggregate(list(Avg_Age_of_Driver=vehicle_reg$Age_of_Driver),list(Accident_Index=vehicle_reg$Accident_Index),mean)
+accidents_vehicleAge=aggregate(list(Avg_Age_of_Vehicle=vehicle_reg$Age_of_Vehicle),list(Accident_Index=vehicle_reg$Accident_Index),mean)
+```
+```{r, echo=FALSE,  message=FALSE, warning=FALSE}
+accidents_reg=merge(accidents_reg,accidents_sex)
+merge=merge(accidents_driverAge,accidents_vehicleAge)
+accidents_reg=merge(accidents_reg,merge)
+```
+```{r, echo=FALSE,  message=FALSE, warning=FALSE,results='asis'}
+# function 'glm' !
+LogitSev_a =glm(Accident_Severity ~ Avg_Sex_of_Driver + Avg_Age_of_Driver + Avg_Age_of_Vehicle, 
+                   data = accidents_reg,
+                   family = binomial())
+
+# see full results: summary(LogitSev_a)
+
+# see relevant info on coefficients:
+results_a=coef(summary(LogitSev_a))
+pander(data.frame(CoefficientExp=exp(results_a[,1]),Significant=results_a[,4]<0.05))
+```
+(I averaged Sex of Driver, Age of Driver, Age of Vehicle. It's easy to understand why I chose last 2 variables. The logic behind average Sex of Driver lay on how I code them. As you see above, I code Male as 0, Female as 1. Thus, if the average Sex of Driver is close to 1, that means there are more female drivers, and vice versa.)
+
+7. Mapping the 'dangerous'(have higher total accident severity score) area
+In mapping, I want to code the accident severity differently from above. Because they coded 1 as Fatal, 3 as Slight, I want them to be reversed to reflect common sense (higher score means more dangerous).
+```{r, echo=FALSE,  message=FALSE, warning=FALSE}
+library(psych)
+accidents_map$Accident_Severity=reverse.code(-1,accidents_map$Accident_Severity)
+```
+```{r, echo=FALSE,  message=FALSE, warning=FALSE}
+
+#Because one has to be 17 or above to legally drive in UK, I sum the popluation whose age is 17 or above.
+popabove17<-as.data.frame(apply(pop[,c(21:94)],1,sum))
+popabove17<-transmute(popabove17,Code=pop$Code,Name=pop$Name,Pop=apply(pop[,c(21:94)],1,sum))
+```
+```{r, echo=FALSE,  message=FALSE, warning=FALSE}
+compressedMap= "https://github.com/daiyang94815/Project/raw/master/data/Local_Authority_Districts_December_2016_Full_Clipped_Boundaries_in_Great_Britain.zip"
+```
+```{r, echo=FALSE,  message=FALSE, warning=FALSE}
+library(utils)
+temp=tempfile()
+download.file(compressedMap, temp)
+unzip(temp)
+```
+```{r message=FALSE, warning=FALSE, include=FALSE}
+library(rgdal)
+GBMap <- rgdal::readOGR("Local_Authority_Districts_December_2016_Full_Clipped_Boundaries_in_Great_Britain.shp",stringsAsFactors=F) # use name
+```
+```{r, echo=FALSE,  message=FALSE, warning=FALSE}
+accidents_map=merge(accidents_map,guide_lad,by.x='Local_Authority_.District.',by.y='code',all.x=T)
+accidents_map=rename(accidents_map,lab_lad=label)
+```
+I want to know which Local Authority Districts (LADs) are dangerous (have higher total accident severity score). So I aggregate the accident severity to the LAD level. Remember how I code the accident severity, I reversed the original code, so now 1 is Slight, 2 is Serious, and 3 is Fatal. And the aggregation of these value is a rough estimation (accident severity score) of how dangerous a LAD is. This contains a implicit (and not necessarily right) assumption that a fatal accident is 2 times more dangerous than a slight one. Accident Severity Rate is the ratio of severity to population.
+```{r, echo=FALSE,  message=FALSE, warning=FALSE}
+accidents_lad=aggregate(accidents_map$Accident_Severity,list(accidents_map$lab_lad),sum)
+names(accidents_lad)=c('Local_Authority_.District.','Accident_Severity_Score')
+```
+```{r, echo=FALSE,  message=FALSE, warning=FALSE}
+accidentsGBmap=merge(GBMap,accidents_lad, by.x='lad16nm', by.y='Local_Authority_.District.',all=T)
+accidentsGBmap=merge(accidentsGBmap,popabove17, by.x='lad16nm', by.y='Name',all=T)
+```
+
+```{r, echo=FALSE,  message=FALSE, warning=FALSE}
+accidentsGBmap$AcciDen=accidentsGBmap$Accident_Severity_Score/accidentsGBmap$Pop
+```
+```{r, echo=FALSE,  message=FALSE, warning=FALSE}
+accidentsGBmap=accidentsGBmap[!is.na(accidentsGBmap$AcciDen),]
+```
+```{r, echo=FALSE,  message=FALSE, warning=FALSE}
+#1.Install and load the necessary packages to manage color and divisions:
+library(RColorBrewer)
+library(classInt)
+```
+```{r, echo=FALSE,  message=FALSE, warning=FALSE}
+#2.Define the input:
+varToPLot=accidentsGBmap$AcciDen
+```
+```{r, echo=FALSE,  message=FALSE, warning=FALSE}
+#3.Get colors and intervals (you can choose palettes from here):
+numberOfClasses = 3
+colorForScale='YlGnBu'
+colors = brewer.pal(numberOfClasses, colorForScale)
+intervals <- classIntervals(varToPLot, numberOfClasses, 
+                            style = "quantile",
+                            dataPrecision=5)
+colorPallette <- findColours(intervals, colors)
+```
+```{r, echo=FALSE,  message=FALSE, warning=FALSE,fig.dim=c(30,50),fig.align='center'}
+#4.Plot
+legendText="Accident Severity Rate"
+shrinkLegend=5
+title="Accident Severity Rate in UK 2016"
+
+plot(accidentsGBmap, col = colorPallette,border='grey',main=title,cex.main=8)
+
+legend('right', legend = names(attr(colorPallette, "table")), 
+       fill = attr(colorPallette, "palette"), cex = shrinkLegend, 
+       bty = "n",
+       title=legendText)
+```
