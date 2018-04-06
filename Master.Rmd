@@ -24,17 +24,17 @@ I also used [UK population data](https://www.ons.gov.uk/peoplepopulationandcommu
 
 I got the UK shapefiles from [here](http://geoportal.statistics.gov.uk/datasets/local-authority-districts-december-2016-full-clipped-boundaries-in-great-britain).
 ```{r}
-accidents<-read.csv('https://github.com/daiyang94815/Project/raw/master/data/dftRoadSafety_Accidents_2016.csv',stringsAsFactors = F)
-vehicle<-read.csv('https://github.com/daiyang94815/Project/raw/master/data/Veh.csv',stringsAsFactors = F)
-#casualty<-read.csv('https://github.com/daiyang94815/Project/raw/master/data/Cas.csv')
+accidents<-read.csv('https://github.com/daiyang94815/Road-Safety-UK-2016/raw/master/data/dftRoadSafety_Accidents_2016.csv',stringsAsFactors = F)
+vehicle<-read.csv('https://github.com/daiyang94815/Road-Safety-UK-2016/raw/master/data/Veh.csv',stringsAsFactors = F)
+#casualty<-read.csv('https://github.com/daiyang94815/Road-Safety-UK-2016/raw/master/data/Cas.csv')
 
 temp = tempfile(fileext = ".xls") # use always with Excel
-dataURL <- "https://github.com/daiyang94815/Project/raw/master/data/Road%20Accident%20Safety%20Data%20Guide.xls" # link to data
+dataURL <- "https://github.com/daiyang94815/Road-Safety-UK-2016/raw/master/data/Road%20Accident%20Safety%20Data%20Guide.xls" # link to data
 download.file(dataURL, destfile=temp, mode='wb')  # file will be downloaded temporarily
 guide_lad = read_excel(temp, sheet =6)
 
 temp = tempfile(fileext = ".xls") # use always with Excel
-dataURL <- "https://github.com/daiyang94815/Project/raw/master/data/ukmidyearpopest2016.xls" # link to data
+dataURL <- "https://github.com/daiyang94815/Road-Safety-UK-2016/raw/master/data/ukmidyearpopest2016.xls" # link to data
 download.file(dataURL, destfile=temp, mode='wb')  # file will be downloaded temporarily
 pop = read_excel(temp, sheet =5,skip=4)
 
@@ -340,7 +340,7 @@ popabove17<-transmute(popabove17,Code=pop$Code,Name=pop$Name,Pop=apply(pop[,c(21
 ###Getting the Map
 Get the map from GitHub:
 ```{r}
-compressedMap= "https://github.com/daiyang94815/Project/raw/master/data/Local_Authority_Districts_December_2016_Full_Clipped_Boundaries_in_Great_Britain.zip"
+compressedMap= "https://github.com/daiyang94815/Road-Safety-UK-2016/raw/master/data/Local_Authority_Districts_December_2016_Full_Clipped_Boundaries_in_Great_Britain.zip"
 ```
 ```{r}
 library(utils)
