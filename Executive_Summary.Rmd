@@ -6,7 +6,7 @@ output: pdf_document
 ---
 ```{r "setup", include=FALSE}
 # set working directory for easy data reading
-knitr::opts_knit$set(root.dir = 'F:/Study and Work/UW/Winter 2018/PUBPOL 599 B Computation Thinking for Governance Analytics/Project/data')
+knitr::opts_knit$set(root.dir = 'F:/Study and Work/UW/Winter 2018/PUBPOL 599 B Computational Thinking for Governance Analytics/Project/data')
 knitr::opts_chunk$set(cache=TRUE)
 library(rmarkdown)
 library(knitr)
