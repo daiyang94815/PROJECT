@@ -58,7 +58,7 @@ The data has these columns:
 str(accidents_EDA)
 ```
 
-##Explore the distribution of where accidents_EDA took place (rural/urban) (dichotomous data)
+##Explore the distribution of where accidents took place (rural/urban) (dichotomous data)
 ```{r}
 #distribution of its values:
 table(accidents_EDA$Urban_or_Rural_Area)
@@ -168,7 +168,7 @@ c + geom_bar()
 ```
 We can see most accidents_EDA happened during morning peak (8am) and afternoon peak (3pm-6pm).
 
-##Explore number of vehicles involved in accidents_EDA (counts)
+##Explore number of vehicles involved in accidents (counts)
 ###Centrality
 Now I want to know usually how many vehicles are involved in an accident:
 ```{r}
