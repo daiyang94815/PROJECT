@@ -1,74 +1,57 @@
 ---
 title: "Road Safety in UK 2016"
+author: Yang Dai
 output: html_notebook
 ---
-#By Yang Dai
 
-```{r "setup"}
-# set working directory for easy data reading
-#knitr::opts_knit$set(root.dir = 'F:/Study and Work/UW/Winter 2018/PUBPOL 599 B Computational Thinking for Governance Analytics/Project/data')
-
-library(readxl)
-library('tidyverse')
-library('DescTools')
-library(moments)
-library(scales)
-library(gmodels)
-library(lubridate)
-```
-
-##Get the data
+# Get the data
 The data I'm using here is [road safety data](https://data.gov.uk/dataset/road-accidents-safety-data) in UK 2016. There are 3 datasets: Accidents, Vehicle, Casualty. As it's easy to understand, an accident is mostly likely involve more than 1 vehicle, and it's likely to have multiple casualties from different vehicles. So Vehicle and Casualty are linked with Accidents by Accident_Index, Casualty and Vehicle are linked by Vehicle_Reference.
 
 I also used [UK population data](https://www.ons.gov.uk/peoplepopulationandcommunity/populationandmigration/populationestimates/timeseries/gbpop/pop) in my analysis.
 
 I got the UK shapefiles from [here](http://geoportal.statistics.gov.uk/datasets/local-authority-districts-december-2016-full-clipped-boundaries-in-great-britain).
-```{r}
-accidents<-read.csv('https://github.com/daiyang94815/Road-Safety-UK-2016/raw/master/data/dftRoadSafety_Accidents_2016.csv',stringsAsFactors = F)
-vehicle<-read.csv('https://github.com/daiyang94815/Road-Safety-UK-2016/raw/master/data/Veh.csv',stringsAsFactors = F)
-#casualty<-read.csv('https://github.com/daiyang94815/Road-Safety-UK-2016/raw/master/data/Cas.csv')
 
-temp = tempfile(fileext = ".xls") # use always with Excel
-dataURL <- "https://github.com/daiyang94815/Road-Safety-UK-2016/raw/master/data/Road%20Accident%20Safety%20Data%20Guide.xls" # link to data
-download.file(dataURL, destfile=temp, mode='wb')  # file will be downloaded temporarily
-guide_lad = read_excel(temp, sheet =6)
+```{r message=FALSE, warning=FALSE}
+if (!file.exists("./data/dftRoadSafety_Accidents_2016.csv")) download.file("https://github.com/daiyang94815/Road-Safety-UK-2016/raw/master/data/dftRoadSafety_Accidents_2016.csv", destfile = "./data/dftRoadSafety_Accidents_2016.csv", mode = "wb")
 
-temp = tempfile(fileext = ".xls") # use always with Excel
-dataURL <- "https://github.com/daiyang94815/Road-Safety-UK-2016/raw/master/data/ukmidyearpopest2016.xls" # link to data
-download.file(dataURL, destfile=temp, mode='wb')  # file will be downloaded temporarily
-pop = read_excel(temp, sheet =5,skip=4)
+if (!file.exists("./data/Cas.csv")) download.file("https://github.com/daiyang94815/Road-Safety-UK-2016/raw/master/data/Cas.csv", destfile = "./data/Cas.csv", mode = "wb")
 
-#accidents<-read.csv('dftRoadSafety_Accidents_2016.csv',stringsAsFactors = F)
-#vehicle<-read.csv('Veh.csv',stringsAsFactors = F)
-#casualty<-read.csv('Cas.csv',stringsAsFactors = F)
-#guide_lad<-read_excel('Road Accident Safety Data Guide.xls', sheet=6)
-#pop<-read_excel('ukmidyearpopest2016.xls',sheet=5,skip=4)
+if (!file.exists("./data/Veh.csv")) download.file("https://github.com/daiyang94815/Road-Safety-UK-2016/raw/master/data/Veh.csv", destfile = "./data/Veh.csv", mode = "wb")
+
+if (!file.exists("./data/Road Accident Safety Data Guide.xls")) download.file("https://github.com/daiyang94815/Road-Safety-UK-2016/raw/master/data/Road%20Accident%20Safety%20Data%20Guide.xls", destfile = "./data/Road Accident Safety Data Guide.xls", mode = "wb")
+
+if (!file.exists("./data/ukmidyearpopest2016.xls")) download.file("https://github.com/daiyang94815/Road-Safety-UK-2016/raw/master/data/ukmidyearpopest2016.xls", destfile = "./data/ukmidyearpopest2016.xls", mode = "wb")
+```
+
+```{r message=FALSE, warning=FALSE}
+library(readr)
+accidents <- read_csv("./data/dftRoadSafety_Accidents_2016.csv")
+vehicle <- read_csv("./data/Veh.csv")
+# casualty <- read_csv("./data/Cas.csv")
+
+library(readxl)
+guide_lad <- read_xls("./data/Road Accident Safety Data Guide.xls", sheet = 6)
+pop <- read_excel("./data/ukmidyearpopest2016.xls", sheet =5,skip=4)
 ```
 
 Duplicate the dataset for different uses:
 ```{r}
-accidents_EDA=accidents
-accidents_map=accidents
-accidents_reg=accidents
-vehicle_reg=vehicle
+accidents_EDA <- accidents
+accidents_map <- accidents
+accidents_reg <- accidents
+vehicle_reg <- vehicle
 ```
 
-The data has these columns:
-```{r}
-str(accidents_EDA)
-```
-
-##Explore the distribution of where accidents took place (rural/urban) (dichotomous data)
+## Explore the distribution of where accidents took place (rural/urban) (dichotomous data)
 ```{r}
 #distribution of its values:
 table(accidents_EDA$Urban_or_Rural_Area)
 ```
 According to the guide, 1=Urban, 2=Rural, 3=Unallocated. So let's drop the unallocated incidents and label the codes.
 ```{r}
-accidents_EDA[accidents_EDA$Urban_or_Rural_Area==3,]$Urban_or_Rural_Area=NA
-accidents_EDA$Urban_or_Rural_Area=factor(as.factor(accidents_EDA$Urban_or_Rural_Area),
+accidents_EDA[accidents_EDA$Urban_or_Rural_Area==3,]$Urban_or_Rural_Area <- NA
+accidents_EDA$Urban_or_Rural_Area=factor(accidents_EDA$Urban_or_Rural_Area,
                                      labels=c('Urban','Rural'))
-                             
 ```
 Re-test:
 ```{r}
@@ -77,7 +60,7 @@ prop.table(table(accidents_EDA$Urban_or_Rural_Area))
 ```
 Apparently, accidents happen more often in urban areas.
 
-###Central measurement and dispersion
+### Central measurement and dispersion
 Make a function for getting mode:
 ```{r}
 getMode=function(aColumn){
@@ -95,10 +78,10 @@ getMode(accidents_EDA$Urban_or_Rural_Area)
 Label the code:
 ```{r}
 # getting original levels:
-levelCat=names(table(accidents_EDA$Accident_Severity))
+levelCat <- names(table(accidents_EDA$Accident_Severity))
 
 # reordering original levels:
-levelCat=c(rev(levelCat))
+levelCat <- rev(levelCat)
 
 # format this into an ordinal variable:
 accidents_EDA$Accident_Severity=factor(accidents_EDA$Accident_Severity,
@@ -110,97 +93,109 @@ Then see the distribution:
 table(accidents_EDA$Accident_Severity)
 ```
 
-###Central Value
+### Central Value
 To see which severity happens more often:
 ```{r}
-#get the mode
+# get the mode
 getMode(accidents_EDA$Accident_Severity)
-#get the median
-Median(accidents_EDA$Accident_Severity,na.rm = T) 
-#or median(as.numeric(accidents_EDA$Accident_Severity),na.rm = T)
-cumsum(prop.table(table(accidents_EDA$Accident_Severity)))  
+```
+```{r}
+library(DescTools)
+# get the median
+Median(accidents_EDA$Accident_Severity, na.rm = T) 
+```
+```{r}
+cumsum(prop.table(table(accidents_EDA$Accident_Severity)))
 ```
 Most of the accidents happened are slight.
 
-###Dispersion
+### Dispersion
 ```{r}
 Gini(table(accidents_EDA$Accident_Severity))
 ```
 Gini tells that there is some concentration. The plot should help us get a better idea:
-```{r}
-accidents_EDA[!is.na(accidents_EDA$Accident_Severity),]%>%
-  ggplot(aes(Accident_Severity))+geom_bar()
+```{r message=FALSE, warning=FALSE}
+library(tidyverse)
+accidents_EDA[!is.na(accidents_EDA$Accident_Severity),] %>%
+  ggplot(aes(Accident_Severity)) + geom_bar()
 ```
 
-##Explore the distribution of month and hour (ordinal categorical variable)
-Now I want to know how accidents happen in the year and in a day.
+## Explore the distribution of month and hour (ordinal categorical variable)
+Now I want to know how accidents happen in the year and in a day.  
 Here I create 2 new variables of hour and month.
 ```{r}
-library(tidyverse)
-accidents_EDA_T=transmute(accidents_EDA,hour=hour(hm(accidents_EDA$Time)),month=month(accidents_EDA$Date))
+library(lubridate)
+accidents_EDA_T <- transmute(accidents_EDA, 
+                             hour = hour(accidents_EDA$Time),
+                             month = month(accidents_EDA$Date))
 ```
 
-###Central Value:
+### Central Value:
 Let's see in what hour and what month did accidents happen most:
 ```{r}
 # Applying our function:
 getMode(accidents_EDA_T$hour)
+```
+```{r}
 getMode(accidents_EDA_T$month)
 ```
 
-###Dispersion
+### Dispersion
 Let's see the Gini's:
 ```{r}
 Gini(table(accidents_EDA_T$month))
+```
+```{r}
 Gini(table(accidents_EDA_T$hour))
 ```
 Gini tells that accidents_EDA happened roughly equally through 12 months, but have some concentration during a day. The plot should help us get a better idea:
 ```{r}
-data=accidents_EDA_T[!is.na(accidents_EDA_T$month),]
-c = ggplot(data,aes(as.factor(month)))
+data <- accidents_EDA_T[!is.na(accidents_EDA_T$month),]
+c <- ggplot(data,aes(factor(month)))
 c + geom_bar()
 ```
 
 ```{r}
-data=accidents_EDA_T[!is.na(accidents_EDA_T$hour),]
-c = ggplot(data,aes(as.factor(hour)))
+data <- accidents_EDA_T[!is.na(accidents_EDA_T$hour),]
+c <- ggplot(data,aes(factor(hour)))
 c + geom_bar()
 ```
-We can see most accidents_EDA happened during morning peak (8am) and afternoon peak (3pm-6pm).
+We can see most accidents happened during morning peak (8am) and afternoon peak (3pm-6pm).
 
-##Explore number of vehicles involved in accidents (counts)
-###Centrality
+## Explore number of vehicles involved in accidents (counts)
+### Centrality
 Now I want to know usually how many vehicles are involved in an accident:
 ```{r}
 summary(accidents_EDA$Number_of_Vehicles)
 ```
 We can see most accidents involve 2 vehicles, but there is 1 major accidents involving 16 vehicles!
 
-###Skewness
+### Skewness
 ```{r}
+library(moments)
 skewness(accidents_EDA$Number_of_Vehicles,na.rm=T)
 ```
-Positive value indicates the distribution is right-skewed, meaning most accidents involve few vehicles.
+Positive value indicates the distribution is right-skewed, meaning most accidents involve a few vehicles.
 
-###Kurtosis
+### Kurtosis
 ```{r}
 kurtosis(accidents_EDA$Number_of_Vehicles,na.rm=T)
 ```
 Positive value indicates it's more concentrated than a normal distribution (the mode is very significant.)
 
 ```{r}
-accidents_EDA%>%
-  ggplot(aes(Number_of_Vehicles))+geom_histogram(bins = 30)+
-  theme(axis.text.x = element_text(angle = 0,hjust = 0,size = 8))+
-  scale_x_continuous(labels = comma)
+accidents_EDA %>%
+  ggplot(aes(factor(Number_of_Vehicles))) + geom_bar() +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  labs(x='Number of Vehicles', title='Number of Vehicles involved in an accident')
 ```
 We can see most accidents involved 2 vehicles.
 
-##Explore the relationship between Road Surface Conditions and Accident Severity (Categorical - Categorical)
+## Explore the relationship between Road Surface Conditions and Accident Severity (Categorical - Categorical)
 Now I want to know what is the relationship between road surface conditions and accident severity.
 Let's label the road surface conditions first.
 ```{r}
-accidents_EDA$Road_Surface_Conditions=factor(as.factor(accidents_EDA$Road_Surface_Conditions),
+accidents_EDA$Road_Surface_Conditions=factor(factor(accidents_EDA$Road_Surface_Conditions),
                              labels=c('Data missing or out of range','Dry','Wet or damp','Snow',
                                       'Frost or ice','Flood over 3cm. deep'))
 ```
@@ -208,13 +203,14 @@ Then explore the distribution:
 ```{r}
 table(accidents_EDA$Road_Surface_Conditions)
 ```
-
 better to see with a contingency table (crosstab):
 ```{r}
 table(accidents_EDA$Road_Surface_Conditions,accidents_EDA$Accident_Severity)
+```
+```{r}
+library(gmodels)
 CrossTable(accidents_EDA$Road_Surface_Conditions,accidents_EDA$Accident_Severity,prop.t=F, prop.r=F, prop.c=F,prop.chisq=F)
 ```
-
 ignore data that is missing or out of range in Road_Surface_Conditions:
 ```{r}
 levels(accidents_EDA$Road_Surface_Conditions)[1]=NA
@@ -225,9 +221,12 @@ compute percents (relative values) marginally:
 ```{r}
 # severity by road surface condition:
 CrossTable(accidents_EDA$Road_Surface_Conditions,accidents_EDA$Accident_Severity,prop.t=F, prop.r=T, prop.c=F,prop.chisq=F)
+```
+```{r}
 # road surface condition by severity:
 CrossTable(accidents_EDA$Road_Surface_Conditions,accidents_EDA$Accident_Severity,prop.t=F, prop.r=F, prop.c=T,prop.chisq=F)
 ```
+
 I think the data on "Snow","Frost or ice","Flood over 3cm. deep" is too few to draw some conclusion, but we can see there's slightly higher portion of Serious accidents on Wet or damp roads than on Dry road.
 Let's test the Ho that the variables are independent (not associated/different in portion of accident severity):
 ```{r}
@@ -258,7 +257,7 @@ accidents_EDA_Tb%>%
   labs(title="You see association?") # with titles!
 ```
 
-##What attributes may increase the chance that an accident is serious (rather than slight)? (Logistic Regression)
+## What attributes may increase the chance that an accident is serious (rather than slight)? (Logistic Regression)
 I only want to know how the attributes affect the probability increase from slight to serious, so I need to drop those fatal incidents:
 ```{r}
 accidents_reg=select(accidents,Accident_Index,Accident_Severity)
@@ -326,7 +325,7 @@ if (LogitSev_a$aic < LogitSev_b$aic){
 ```
 
 In mapping, I want to code the accident severity differently from above. Because they coded 1 as Fatal, 3 as Slight, I want them to be reversed to reflect common sense (higher score means more dangerous).
-```{r}
+```{r message=FALSE, warning=FALSE}
 library(psych)
 accidents_map$Accident_Severity=reverse.code(-1,accidents_map$Accident_Severity)
 ```
@@ -337,11 +336,12 @@ popabove17<-as.data.frame(apply(pop[,c(21:94)],1,sum))
 popabove17<-transmute(popabove17,Code=pop$Code,Name=pop$Name,Pop=apply(pop[,c(21:94)],1,sum))
 ```
 
-###Getting the Map
+### Getting the Map
 Get the map from GitHub:
 ```{r}
-compressedMap= "https://github.com/daiyang94815/Road-Safety-UK-2016/raw/master/data/Local_Authority_Districts_December_2016_Full_Clipped_Boundaries_in_Great_Britain.zip"
+compressedMap = "https://github.com/daiyang94815/Road-Safety-UK-2016/raw/master/data/Local_Authority_Districts_December_2016_Full_Clipped_Boundaries_in_Great_Britain.zip"
 ```
+
 ```{r}
 library(utils)
 temp=tempfile()
